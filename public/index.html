@@ -486,6 +486,20 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:url("data:im
 .morning-hint{font-size:10px;color:var(--tx3);letter-spacing:.12em;position:relative;animation:hint-pulse 2s ease-in-out infinite}
 @keyframes hint-pulse{0%,100%{opacity:.4}50%{opacity:1}}
 
+/* ── NOBUSHOP SYNC ── */
+.nb-sync{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 14px;margin-top:10px;border-radius:12px;
+  background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.2);
+  font-size:11px;color:var(--gr);font-weight:600;letter-spacing:.04em;cursor:pointer;
+  position:relative;overflow:hidden;
+}
+.nb-sync:active{opacity:.7}
+.nb-dot{width:7px;height:7px;border-radius:50%;background:var(--gr);flex-shrink:0;box-shadow:0 0 6px var(--gr);animation:nb-pulse 2s ease-in-out infinite}
+@keyframes nb-pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+.nb-sync-txt{flex:1}
+.nb-sync-sub{font-size:9px;color:var(--tx3);font-weight:400;letter-spacing:.02em;margin-top:1px}
+
 /* ── SETUP SCREEN ── */
 .setup{
   position:absolute;inset:0;z-index:50;
@@ -1071,6 +1085,19 @@ function renderHome(){
         return '';
       }).join('');
 
+  const nbAvailable = isNobushopAvailable();
+  const nbPending = getNobushopPendingCount();
+  const nbHTML = nbAvailable
+    ? `<div class="nb-sync" id="nb-sync-btn">
+        <span class="nb-dot"></span>
+        <div class="nb-sync-txt">
+          <div>下書き管理アプリと連携中</div>
+          <div class="nb-sync-sub">${nbPending > 0 ? `⚡ 未反映の売上が${nbPending}件あります。タップして同期` : '✓ 今日の売上は反映済み'}</div>
+        </div>
+        <span style="font-size:11px;color:var(--tx3)">›</span>
+      </div>`
+    : '';
+
   document.getElementById('screen-home').innerHTML = `
     ${morningCard()}
     <div class="sec-lbl">今日のミッション</div>
@@ -1079,7 +1106,8 @@ function renderHome(){
     <div class="sec-lbl">アクション</div>
     <div class="act-grid">${actHTML}</div>
 
-    <button class="profit-btn" id="profit-btn">💰 利益を記録する</button>
+    <button class="profit-btn" id="profit-btn">💰 利益を手入力する</button>
+    ${nbHTML}
 
     <div class="sec-lbl">最近のアクティビティ</div>
     <div class="card">${logHTML}</div>
@@ -1366,13 +1394,85 @@ function fireNotifCheck(){
   } catch(e){}
 }
 
+/* ── NOBUSHOP SYNC ── */
+function isNobushopAvailable(){
+  try{ return !!localStorage.getItem('nobushop_data'); }catch(e){ return false; }
+}
+
+function syncFromNobushop(){
+  if(!isNobushopAvailable()) return {count:0, profit:0};
+  try{
+    const raw = localStorage.getItem('nobushop_data');
+    const data = JSON.parse(raw);
+    const sales = data.sales || [];
+    S.nobushopSynced = S.nobushopSynced || {};
+    const t = todayStr();
+    let newProfit = 0, newCount = 0;
+    for(const sale of sales){
+      if(!sale.saleDate || !sale.saleDate.startsWith(t)) continue;
+      if(S.nobushopSynced[sale.id]) continue;
+      const profit = sale.profit || 0;
+      S.nobushopSynced[sale.id] = true;
+      newProfit += profit;
+      newCount++;
+    }
+    if(newCount > 0){
+      ensureToday();
+      const d = dayData(t);
+      d.profit = (d.profit||0) + newProfit;
+      S.totalProfit = (S.totalProfit||0) + newProfit;
+      const xpGain = Math.max(5, Math.min(5000, Math.floor(Math.abs(newProfit)*0.01)));
+      addXP(xpGain, 'profit');
+      if(S.lastActive !== t){
+        if(S.lastActive){
+          const prev = new Date(S.lastActive); prev.setDate(prev.getDate()+1);
+          const exp = prev.getFullYear()+'-'+String(prev.getMonth()+1).padStart(2,'0')+'-'+String(prev.getDate()).padStart(2,'0');
+          S.streak = (exp===t)?(S.streak||0)+1:1;
+        } else { S.streak=1; }
+        S.streakMax = Math.max(S.streakMax||0, S.streak);
+        S.lastActive = t;
+      }
+      pushLog({type:'profit', amt:newProfit, xp:xpGain, ts:Date.now(), source:'nobushop'});
+      updateMissions(t, 'profit', {amount:newProfit});
+      checkAchievements();
+      save();
+    }
+    return {count:newCount, profit:newProfit};
+  } catch(e){
+    console.warn('[nobushop sync]', e);
+    return {count:0, profit:0};
+  }
+}
+
+// 今日の nobushop 未同期売上件数を返す（同期済みは除く）
+function getNobushopPendingCount(){
+  if(!isNobushopAvailable()) return 0;
+  try{
+    const raw = localStorage.getItem('nobushop_data');
+    const data = JSON.parse(raw);
+    const t = todayStr();
+    const synced = S.nobushopSynced || {};
+    return (data.sales||[]).filter(s=>s.saleDate?.startsWith(t) && !synced[s.id] && (s.profit||0)!==0).length;
+  } catch(e){ return 0; }
+}
+
 /* ── ROUTER ── */
 function showTab(t){
   tab = t;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+t).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===t));
-  if(t==='home') renderHome();
+  if(t==='home'){
+    const sync = syncFromNobushop();
+    renderHome();
+    if(sync.count > 0){
+      renderTop();
+      setTimeout(()=>{
+        fxPop(`📥 nobushop ${sync.count}件 +${fmtY(sync.profit)}`, '#00ff88', window.innerWidth/2, window.innerHeight*.4);
+        if(sync.profit > 0) fxCoinShower(Math.min(15, Math.max(5, Math.floor(sync.profit/1000))));
+      }, 200);
+    }
+  }
   else if(t==='stats') renderStats();
   else if(t==='ach') renderAch();
   else if(t==='set') renderSet();
@@ -1391,7 +1491,18 @@ document.querySelectorAll('.nav-btn').forEach(b=>{
 document.getElementById('screen-home').addEventListener('click', ev=>{
   const btn = ev.target.closest('.act-btn');
   if(btn){ doAction(btn.dataset.act, ev); return; }
-  if(ev.target.closest('#profit-btn')){ openProfit(); }
+  if(ev.target.closest('#profit-btn')){ openProfit(); return; }
+  if(ev.target.closest('#nb-sync-btn')){
+    const sync = syncFromNobushop();
+    renderTop(); renderHome();
+    if(sync.count > 0){
+      fxPop(`📥 ${sync.count}件 +${fmtY(sync.profit)}`, '#00ff88', window.innerWidth/2, window.innerHeight*.4);
+      if(sync.profit > 0) fxCoinShower(Math.min(20, Math.max(5, Math.floor(sync.profit/1000))));
+    } else {
+      fxPop('✓ 最新です', '#00ff88', window.innerWidth/2, window.innerHeight*.4);
+    }
+    return;
+  }
 });
 
 document.getElementById('m-cancel').addEventListener('click', closeProfit);
@@ -1418,14 +1529,27 @@ function boot(){
   if(!S || !S.startedAt){
     document.getElementById('setup').style.display = 'flex';
   } else {
-    // backfill new fields for older saves
     S.customMissions = S.customMissions || [];
     S.notif = S.notif || {on:false, time:'09:00'};
     ensureToday();
+    const sync = syncFromNobushop();
     renderAll();
+    if(sync.count > 0){
+      setTimeout(()=>{
+        fxPop(`📥 nobushop ${sync.count}件 +${fmtY(sync.profit)}`, '#00ff88', window.innerWidth/2, window.innerHeight*.4);
+        if(sync.profit > 0) fxCoinShower(Math.min(20, Math.max(5, Math.floor(sync.profit/1000))));
+      }, 600);
+    }
     scheduleNotif();
   }
 }
+// Auto-sync when app becomes visible again
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && S?.startedAt && tab==='home'){
+    const sync = syncFromNobushop();
+    if(sync.count > 0){ renderTop(); renderHome(); }
+  }
+});
 boot();
 </script>
 </body>
