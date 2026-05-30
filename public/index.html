@@ -255,6 +255,7 @@ body::after{
 .stat-v.gd{color:var(--gd);text-shadow:0 0 8px rgba(255,215,0,.4)}
 .stat-v.mg{color:var(--mg);text-shadow:0 0 8px rgba(255,0,212,.4)}
 .stat-v.gr{color:var(--gr);text-shadow:0 0 8px rgba(0,255,136,.4)}
+.stat-v.or{color:var(--or);text-shadow:0 0 8px rgba(255,136,0,.4)}
 
 .chart{height:160px;width:100%;display:block}
 .chart-empty{text-align:center;color:var(--tx3);font-size:12px;padding:50px 10px}
@@ -461,6 +462,30 @@ body::after{
 /* Select dropdown styling */
 select.inp{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%2300f0ff' d='M6 8L0 0h12z'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
 
+/* ── MORNING CARD ── */
+.morning-card{
+  margin-bottom:14px;
+  background:linear-gradient(135deg,rgba(0,240,255,.07) 0%,rgba(255,0,212,.05) 100%);
+  border:1px solid rgba(0,240,255,.28);
+  border-radius:18px;padding:20px 18px;
+  text-align:center;position:relative;overflow:hidden;
+}
+.morning-card::before{
+  content:'';position:absolute;inset:0;border-radius:18px;
+  background:radial-gradient(ellipse at 50% -10%,rgba(0,240,255,.12),transparent 60%);
+  pointer-events:none;
+}
+.morning-greeting{font-size:17px;font-weight:800;color:var(--tx);margin-bottom:10px;position:relative}
+.morning-quote{
+  font-size:13px;color:var(--tx2);line-height:1.7;margin-bottom:14px;
+  position:relative;font-style:italic;padding:0 10px;
+  border-left:2px solid rgba(0,240,255,.3);text-align:left;
+}
+.morning-yesterday{font-size:13px;color:var(--tx2);margin-bottom:10px;font-family:"SF Mono","Menlo",monospace;position:relative}
+.morning-yesterday span{color:var(--gd);font-weight:700}
+.morning-hint{font-size:10px;color:var(--tx3);letter-spacing:.12em;position:relative;animation:hint-pulse 2s ease-in-out infinite}
+@keyframes hint-pulse{0%,100%{opacity:.4}50%{opacity:1}}
+
 /* ── SETUP SCREEN ── */
 .setup{
   position:absolute;inset:0;z-index:50;
@@ -509,24 +534,14 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:url("data:im
 <!-- Profit modal -->
 <div class="modal-bg" id="modal">
   <div class="modal">
-    <div class="modal-title">💰 利益を記録</div>
-    <div class="modal-grid">
-      <div class="inp-wrap">
-        <div class="inp-l">売上 (¥)</div>
-        <input class="inp" id="m-rev" type="number" inputmode="numeric" placeholder="0">
-      </div>
-      <div class="inp-wrap">
-        <div class="inp-l">原価 (¥)</div>
-        <input class="inp" id="m-cost" type="number" inputmode="numeric" placeholder="0">
-      </div>
+    <div class="modal-title">💰 今日の利益を記録</div>
+    <div class="inp-wrap" style="margin-bottom:10px">
+      <div class="inp-l">利益 (¥)</div>
+      <input class="inp" id="m-profit-val" type="number" inputmode="numeric" placeholder="0" style="font-size:28px;text-align:center">
     </div>
-    <div class="inp-wrap" style="margin-bottom:14px">
-      <div class="inp-l">手数料・送料 (¥)</div>
-      <input class="inp" id="m-fee" type="number" inputmode="numeric" placeholder="0">
-    </div>
-    <div class="calc-row">
-      <span class="calc-l">利益</span>
-      <span class="calc-v" id="m-profit">¥0</span>
+    <div id="m-xp-preview" style="text-align:center;font-size:14px;font-weight:800;color:var(--cy);min-height:22px;margin-bottom:10px;font-family:'SF Mono','Menlo',monospace;text-shadow:0 0 8px rgba(0,240,255,.5)"></div>
+    <div style="font-size:11px;color:var(--tx3);text-align:center;margin-bottom:16px;line-height:1.7">
+      売上管理アプリで確認した利益額をそのまま入力<br>マイナスも記録できます
     </div>
     <div class="modal-btns">
       <button class="modal-btn btn-cancel" id="m-cancel">キャンセル</button>
@@ -742,40 +757,27 @@ function doAction(key, e){
 
 /* ── PROFIT MODAL ── */
 function openProfit(){
-  document.getElementById('m-rev').value = '';
-  document.getElementById('m-cost').value = '';
-  document.getElementById('m-fee').value = '';
-  document.getElementById('m-profit').textContent = '¥0';
+  document.getElementById('m-profit-val').value = '';
+  document.getElementById('m-xp-preview').textContent = '';
   document.getElementById('modal').classList.add('show');
-  setTimeout(()=>document.getElementById('m-rev').focus(), 300);
+  setTimeout(()=>document.getElementById('m-profit-val').focus(), 300);
 }
 function closeProfit(){ document.getElementById('modal').classList.remove('show'); }
-function updateProfitCalc(){
-  const r = +document.getElementById('m-rev').value || 0;
-  const c = +document.getElementById('m-cost').value || 0;
-  const f = +document.getElementById('m-fee').value || 0;
-  const p = r - c - f;
-  const el = document.getElementById('m-profit');
-  el.textContent = (p>=0?'¥':'-¥') + Math.abs(p).toLocaleString('ja-JP');
-  el.classList.toggle('neg', p<0);
+function updateProfitPreview(){
+  const val = +document.getElementById('m-profit-val').value || 0;
+  const xpGain = val ? Math.max(5, Math.min(5000, Math.floor(Math.abs(val) * 0.01))) : 0;
+  const el = document.getElementById('m-xp-preview');
+  el.textContent = val ? `+${xpGain} XP 獲得` : '';
+  el.style.color = val < 0 ? 'var(--rd)' : 'var(--cy)';
 }
 function saveProfit(){
-  const rev = +document.getElementById('m-rev').value || 0;
-  const cost = +document.getElementById('m-cost').value || 0;
-  const fee = +document.getElementById('m-fee').value || 0;
-  if(rev === 0 && cost === 0){ closeProfit(); return; }
-  const profit = rev - cost - fee;
+  const profit = +document.getElementById('m-profit-val').value;
+  if(!profit){ closeProfit(); return; }
   ensureToday();
   const t = todayStr();
   const d = dayData(t);
   d.profit = (d.profit||0) + profit;
-  d.rev   = (d.rev||0)   + rev;
-  d.cost  = (d.cost||0)  + cost;
-  d.fee   = (d.fee||0)   + fee;
   S.totalProfit = (S.totalProfit||0) + profit;
-  S.totalRev = (S.totalRev||0) + rev;
-  S.totalCost = (S.totalCost||0) + cost;
-  S.totalFee = (S.totalFee||0) + fee;
 
   // XP gain: 1% of profit (min 5, max 5000)
   const xpGain = Math.max(5, Math.min(5000, Math.floor(Math.abs(profit) * 0.01)));
@@ -959,6 +961,62 @@ function renderTop(){
     </div>`;
 }
 
+/* ── QUOTES ── */
+const QUOTES = [
+  '今日の1アクションが、未来を変える',
+  '小さな積み上げが、大きな成果になる',
+  'ライバルは昨日の自分だけだ',
+  '動いた分だけ、必ず前に進む',
+  '出品は出口、仕入れは未来への投資',
+  'どんな日も、1回だけ出品できる',
+  '継続は最強の武器。今日も磨け',
+  'まず動く。考えるのは動いた後でいい',
+  '今日のリサーチが、明日の利益になる',
+  '誰も見てなくても、積み上げは消えない',
+  '利益は結果、アクションが原因',
+  '稼ぎたいなら、まず手を動かせ',
+  '休んだ昨日より、動く今日が強い',
+  '1日1出品。それだけで変わる',
+  '迷ったら出品。答えは市場が教えてくれる',
+];
+
+function morningCard(){
+  const t = todayStr();
+  const d = dayData(t);
+  const totalToday = ACT_KEYS.reduce((a,k)=>a+(d.acts?.[k]||0),0);
+  if(totalToday > 0) return '';
+
+  const hour = new Date().getHours();
+  const greeting = hour < 10 ? '☀️ おはよう' : hour < 17 ? '⚡ こんにちは' : '🌙 今日まだ動いてないよ';
+
+  // Yesterday
+  const yDate = new Date(); yDate.setDate(yDate.getDate()-1);
+  const yKey = yDate.getFullYear()+'-'+String(yDate.getMonth()+1).padStart(2,'0')+'-'+String(yDate.getDate()).padStart(2,'0');
+  const yd = S.days?.[yKey];
+  const yActs = yd ? ACT_KEYS.reduce((a,k)=>a+(yd.acts?.[k]||0),0) : 0;
+  const yProfit = yd?.profit || 0;
+  let yLine = '';
+  if(yActs > 0){
+    yLine = `昨日: <span>${yActs}アクション</span>${yProfit > 0 ? ` · <span>+${fmtY(yProfit)}</span>` : ''}`;
+  } else if(S.streak > 0){
+    yLine = `🔥 <span>${S.streak}日連続</span> 継続中！`;
+  } else {
+    yLine = '<span>今日から連続記録を狙え</span>';
+  }
+
+  // Quote by date
+  let h = 0;
+  for(let i=0;i<t.length;i++) h = (h*31+t.charCodeAt(i))>>>0;
+  const quote = QUOTES[h % QUOTES.length];
+
+  return `<div class="morning-card">
+    <div class="morning-greeting">${greeting}、<span style="color:var(--gd)">Lv.${S.level}</span> の勇者</div>
+    <div class="morning-quote">"${quote}"</div>
+    <div class="morning-yesterday">${yLine}</div>
+    <div class="morning-hint">↓ 今日のミッションを確認して最初のアクションへ ↓</div>
+  </div>`;
+}
+
 /* ── RENDER: HOME ── */
 function renderHome(){
   const t = todayStr();
@@ -1014,6 +1072,7 @@ function renderHome(){
       }).join('');
 
   document.getElementById('screen-home').innerHTML = `
+    ${morningCard()}
     <div class="sec-lbl">今日のミッション</div>
     <div class="card miss-card">${missHTML}</div>
 
@@ -1039,7 +1098,10 @@ function timeAgo(ts){
 function renderStats(){
   const totalActs = ACT_KEYS.reduce((a,k)=>a+totalActsOf(k),0);
   const days = Object.keys(S.days||{}).length;
-  const margin = S.totalRev > 0 ? Math.round((S.totalProfit/S.totalRev)*100) : 0;
+  const bestDay = Math.max(0, ...Object.values(S.days||{}).map(d=>d.profit||0));
+  const now = new Date();
+  const mPrefix = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const thisMonth = Object.entries(S.days||{}).filter(([k])=>k.startsWith(mPrefix)).reduce((a,[,d])=>a+(d.profit||0),0);
 
   const actStats = ACT_KEYS.map(k=>{
     const a = ACTIONS[k];
@@ -1054,8 +1116,8 @@ function renderStats(){
     <div class="sec-lbl">利益サマリ</div>
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-l">TOTAL PROFIT</div><div class="stat-v gd">${fmtY(S.totalProfit||0)}</div></div>
-      <div class="stat-box"><div class="stat-l">TOTAL REVENUE</div><div class="stat-v cy">${fmtY(S.totalRev||0)}</div></div>
-      <div class="stat-box"><div class="stat-l">MARGIN</div><div class="stat-v mg">${margin}%</div></div>
+      <div class="stat-box"><div class="stat-l">THIS MONTH</div><div class="stat-v cy">${fmtY(thisMonth)}</div></div>
+      <div class="stat-box"><div class="stat-l">BEST DAY</div><div class="stat-v mg">${fmtY(bestDay)}</div></div>
       <div class="stat-box"><div class="stat-l">DAYS ACTIVE</div><div class="stat-v gr">${days}</div></div>
     </div>
 
@@ -1337,9 +1399,7 @@ document.getElementById('m-save').addEventListener('click', saveProfit);
 document.getElementById('modal').addEventListener('click', ev=>{
   if(ev.target.id === 'modal') closeProfit();
 });
-['m-rev','m-cost','m-fee'].forEach(id=>{
-  document.getElementById(id).addEventListener('input', updateProfitCalc);
-});
+document.getElementById('m-profit-val').addEventListener('input', updateProfitPreview);
 
 document.getElementById('cm-cancel').addEventListener('click', closeCMModal);
 document.getElementById('cm-save').addEventListener('click', saveCM);
